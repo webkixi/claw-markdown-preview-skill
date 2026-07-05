@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""启动本地 HTTP 服务，为 Markdown 预览页面提供静态文件服务。
+
+支持：
+- 动态读取文件内容（热更新）
+- 心跳检测（页面关闭后自动停止服务）
+"""
+
+import argparse
+import hashlib
+import http.server
+import json
+import os
+import sys
+import threading
+import time
+import webbrowser
+
+
+ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
+
+
+def find_free_port(start_port):
+    import socket
+    for port in range(start_port, start_port + 20):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            if s.connect_ex(("127.0.0.1", port)) != 0:
+                return port
+    return start_port
+
+
+class PreviewServer:
+    """共享状态容器，供 HTTP handler 和心跳线程访问。"""
+
+    def __init__(self, file_path=None, stdin_content=None, heartbeat_timeout=10):
+        self.file_path = file_path          # 本地 md 文件路径（None 表示 stdin 模式）
+        self.stdin_content = stdin_content  # stdin 模式下的固定内容
+        self.heartbeat_timeout = heartbeat_timeout
+        self.last_heartbeat = time.time()
+        self._content_cache = None          # 缓存上次读取的内容，避免重复读文件
+        self._content_hash = None
+        self._last_mtime = None
+
+    def get_content(self):
+        """获取当前 markdown 内容。文件模式下动态读取文件。"""
+        if self.file_path:
+            try:
+                mtime = os.path.getmtime(self.file_path)
+                if self._last_mtime is None or mtime != self._last_mtime:
+                    with open(self.file_path, "r", encoding="utf-8") as f:
+                        self._content_cache = f.read()
+                    self._content_hash = hashlib.md5(
+                        self._content_cache.encode("utf-8")
+                    ).hexdigest()
+                    self._last_mtime = mtime
+                return self._content_cache
+            except (FileNotFoundError, PermissionError):
+                return self._content_cache or ""
+        return self.stdin_content or ""
+
+    def get_hash(self):
+        """获取当前内容的 MD5 hash。"""
+        self.get_content()  # 确保缓存是最新的
+        return self._content_hash or ""
+
+    def heartbeat(self):
+        """更新心跳时间戳。"""
+        self.last_heartbeat = time.time()
+
+    def is_alive(self):
+        """检查心跳是否在超时范围内。"""
+        return (time.time() - self.last_heartbeat) < self.heartbeat_timeout
+
+
+def make_handler(server_state):
+    class PreviewHandler(http.server.SimpleHTTPRequestHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, directory=ASSETS_DIR, **kwargs)
+
+        def do_GET(self):
+            if self.path == "/" or self.path == "/index.html":
+                return self._serve_index()
+            elif self.path == "/api/markdown":
+                return self._serve_markdown_api()
+            elif self.path == "/api/markdown-hash":
+                return self._serve_hash()
+            elif self.path == "/api/close":
+                return self._handle_close()
+            return super().do_GET()
+
+        def do_POST(self):
+            if self.path == "/api/heartbeat":
+                return self._handle_heartbeat()
+            self.send_error(404, "Not Found")
+
+        def _serve_index(self):
+            index_path = os.path.join(ASSETS_DIR, "index.html")
+            if not os.path.exists(index_path):
+                self.send_error(404, "index.html not found")
+                return
+
+            with open(index_path, "r", encoding="utf-8") as f:
+                html = f.read()
+
+            md_content = server_state.get_content()
+            if md_content:
+                import html as html_mod
+                md_encoded = html_mod.escape(md_content)
+                html = html.replace(
+                    '<script id="md-source" type="text/markdown"></script>',
+                    '<script id="md-source" type="text/markdown">%s</script>' % md_encoded
+                )
+
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(html.encode("utf-8"))))
+            self.end_headers()
+            self.wfile.write(html.encode("utf-8"))
+
+        def _serve_markdown_api(self):
+            content = server_state.get_content()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(
+                {"content": content}, ensure_ascii=False
+            ).encode("utf-8"))
+
+        def _serve_hash(self):
+            h = server_state.get_hash()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps(
+                {"hash": h}, ensure_ascii=False
+            ).encode("utf-8"))
+
+        def _handle_heartbeat(self):
+            server_state.heartbeat()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
+
+        def _handle_close(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
+            # 延迟关闭，让响应先发出去
+            threading.Thread(target=lambda: (time.sleep(0.3), os._exit(0)), daemon=True).start()
+
+        def log_message(self, format, *args):
+            if server_state.verbose:
+                super().log_message(format, *args)
+
+    return PreviewHandler
+
+
+def heartbeat_watcher(server_state, http_server):
+    """后台线程：监控心跳，超时则关闭服务。"""
+    while True:
+        time.sleep(2)
+        if not server_state.is_alive():
+            if server_state.verbose:
+                print("[heartbeat] 心跳超时，自动关闭服务", file=sys.stderr)
+            http_server.shutdown()
+            return
+
+
+def main():
+    parser = argparse.ArgumentParser(description="ClawMarkDown Preview Server")
+    parser.add_argument("--file", "-f", type=str, help="markdown 文件路径")
+    parser.add_argument("--port", "-p", type=int, default=8765, help="HTTP 端口")
+    parser.add_argument("--stdin", action="store_true", help="从标准输入读取 markdown")
+    parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
+    parser.add_argument("--verbose", action="store_true", help="输出请求日志")
+    parser.add_argument("--heartbeat-timeout", type=int, default=10,
+                        help="心跳超时秒数，超过此时间无心跳则自动关闭服务（默认 10）")
+    args = parser.parse_args()
+
+    stdin_content = None
+    file_path = None
+
+    if args.stdin:
+        stdin_content = sys.stdin.read()
+    elif args.file:
+        file_path = os.path.abspath(args.file)
+        if not os.path.exists(file_path):
+            print("错误：文件不存在: %s" % args.file, file=sys.stderr)
+            sys.exit(1)
+
+    server_state = PreviewServer(
+        file_path=file_path,
+        stdin_content=stdin_content,
+        heartbeat_timeout=args.heartbeat_timeout,
+    )
+    server_state.verbose = args.verbose
+
+    port = find_free_port(args.port)
+    HandlerClass = make_handler(server_state)
+
+    http_server = http.server.HTTPServer(("127.0.0.1", port), HandlerClass)
+
+    # 启动心跳监控线程
+    watcher_thread = threading.Thread(
+        target=heartbeat_watcher,
+        args=(server_state, http_server),
+        daemon=True,
+    )
+    watcher_thread.start()
+
+    url = "http://127.0.0.1:%d" % port
+    if not args.no_open:
+        webbrowser.open(url)
+
+    md_content = server_state.get_content()
+    if md_content:
+        print("已加载 Markdown 内容（%d 字符）" % len(md_content))
+    print("== Markdown 预览服务已启动: %s ==" % url)
+    print("心跳超时: %d 秒" % args.heartbeat_timeout)
+    print("按 Ctrl+C 停止服务")
+
+    try:
+        http_server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n服务已停止")
+        http_server.server_close()
+
+
+if __name__ == "__main__":
+    main()
