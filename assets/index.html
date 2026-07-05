@@ -171,6 +171,19 @@ function updatePreview() {
     window.CPM.renderMermaidBlocks(previewEl);
   }
 
+  // 图片加载失败时显示占位提示
+  previewEl.querySelectorAll('img').forEach(function (img) {
+    img.addEventListener('error', function () {
+      if (img.dataset.errorHandled) return;
+      img.dataset.errorHandled = '1';
+      var placeholder = document.createElement('div');
+      placeholder.className = 'img-error-placeholder';
+      placeholder.textContent = '⚠ 图片加载失败';
+      img.style.display = 'none';
+      img.parentNode.insertBefore(placeholder, img.nextSibling);
+    });
+  });
+
   var plainText = previewEl.textContent || '';
   var charCount = plainText.replace(/\s+/g, '').length;
   var wordCountEl = document.getElementById('wordCount');
@@ -319,6 +332,9 @@ function init() {
 
   document.getElementById('copyRichBtn').addEventListener('click', copyRichText);
 
+  /* 粘贴图片：监听编辑区 paste 事件 */
+  setupPasteHandler();
+
   if (md) {
     switchPreviewTheme();
     updatePreview();
@@ -338,10 +354,11 @@ function startHeartbeat() {
   // 每 5 秒发一次
   heartbeatTimer = setInterval(sendHeartbeat, 5000);
 
-  // 页面关闭时通知服务端立即停止
+  // 页面关闭时保存内容并通知服务端停止
   window.addEventListener('beforeunload', function () {
     try {
-      navigator.sendBeacon('/api/close');
+      var content = getEditorContent();
+      navigator.sendBeacon('/api/close', JSON.stringify({ content: content }));
     } catch (e) {}
   });
 }
@@ -356,6 +373,83 @@ function sendHeartbeat() {
 
 var lastHash = null;
 var hashTimer = null;
+
+/* ========== 粘贴图片 ========== */
+
+var MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5MB
+
+function setupPasteHandler() {
+  var editEl = document.getElementById('editorEdit');
+  var cmContainer = document.getElementById('codemirrorContainer');
+  var target = cmContainer || editEl;
+  if (!target) return;
+
+  target.addEventListener('paste', function (e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+
+    var imageItem = null;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image/') === 0) {
+        imageItem = items[i];
+        break;
+      }
+    }
+
+    if (!imageItem) return;
+
+    e.preventDefault();
+    var blob = imageItem.getAsFile();
+    if (!blob) return;
+
+    if (blob.size > MAX_IMAGE_SIZE) {
+      showToast('图片过大（' + Math.round(blob.size / 1024 / 1024 * 10) / 10 + 'MB），请压缩后粘贴（上限 5MB）');
+      return;
+    }
+
+    uploadImage(blob);
+  });
+}
+
+function uploadImage(blob) {
+  showToast('正在上传图片...');
+  fetch('/api/image', {
+    method: 'POST',
+    headers: { 'Content-Type': blob.type },
+    body: blob,
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (data) {
+      if (!data.path) throw new Error('上传失败');
+      var md = '![](' + data.path + ')';
+      insertAtCursor(md);
+      showToast('图片已插入');
+    })
+    .catch(function (err) {
+      showToast('图片上传失败: ' + err.message);
+    });
+}
+
+function insertAtCursor(text) {
+  if (cmEditor) {
+    var sel = cmEditor.state.selection.main;
+    cmEditor.dispatch({
+      changes: { from: sel.from, to: sel.to, insert: text },
+      selection: { anchor: sel.from + text.length },
+    });
+    cmEditor.focus();
+  } else {
+    var ta = document.getElementById('editorTextarea');
+    if (ta) {
+      var start = ta.selectionStart;
+      var end = ta.selectionEnd;
+      ta.value = ta.value.substring(0, start) + text + ta.value.substring(end);
+      ta.selectionStart = ta.selectionEnd = start + text.length;
+      ta.focus();
+      ta.dispatchEvent(new Event('input'));
+    }
+  }
+}
 
 function startHotReload() {
   // 3 秒后开始轮询（等首次渲染完成）

@@ -10,11 +10,14 @@ import argparse
 import hashlib
 import http.server
 import json
+import mimetypes
 import os
 import sys
 import threading
 import time
+import uuid as uuid_mod
 import webbrowser
+from urllib.parse import unquote
 
 
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
@@ -86,11 +89,19 @@ def make_handler(server_state):
                 return self._serve_hash()
             elif self.path == "/api/close":
                 return self._handle_close()
+            elif self.path.startswith("/images/"):
+                return self._serve_image()
             return super().do_GET()
 
         def do_POST(self):
             if self.path == "/api/heartbeat":
                 return self._handle_heartbeat()
+            elif self.path == "/api/image":
+                return self._handle_image_upload()
+            elif self.path == "/api/save":
+                return self._handle_save()
+            elif self.path == "/api/close":
+                return self._handle_close_with_save()
             self.send_error(404, "Not Found")
 
         def _serve_index(self):
@@ -149,6 +160,106 @@ def make_handler(server_state):
             self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
             # 延迟关闭，让响应先发出去
             threading.Thread(target=lambda: (time.sleep(0.3), os._exit(0)), daemon=True).start()
+
+        def _handle_close_with_save(self):
+            """POST /api/close：先保存内容，再关闭服务。"""
+            content_length = int(self.headers.get("Content-Length", 0))
+            if content_length > 0:
+                body = self.rfile.read(content_length)
+                try:
+                    data = json.loads(body)
+                    content = data.get("content", "")
+                    if server_state.file_path and content:
+                        with open(server_state.file_path, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        if server_state.verbose:
+                            print("[save] 内容已保存到文件", file=sys.stderr)
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    pass
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
+            threading.Thread(target=lambda: (time.sleep(0.3), os._exit(0)), daemon=True).start()
+
+        def _serve_image(self):
+            """从 md 文件所在目录的 images/ 子目录提供图片。"""
+            if not server_state.file_path:
+                self.send_error(404, "No file path set")
+                return
+            md_dir = os.path.dirname(server_state.file_path)
+            rel_path = unquote(self.path.lstrip("/"))
+            img_path = os.path.join(md_dir, rel_path)
+            # 防止路径穿越
+            if not os.path.abspath(img_path).startswith(os.path.abspath(md_dir)):
+                self.send_error(403, "Forbidden")
+                return
+            if not os.path.exists(img_path) or not os.path.isfile(img_path):
+                self.send_error(404, "Image not found")
+                return
+            content_type, _ = mimetypes.guess_type(img_path)
+            if not content_type:
+                content_type = "application/octet-stream"
+            with open(img_path, "rb") as f:
+                data = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _handle_image_upload(self):
+            """POST /api/image：接收图片 Blob，存入 md 目录的 images/ 下。"""
+            if not server_state.file_path:
+                self.send_error(400, "No file path set")
+                return
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            content_type = self.headers.get("Content-Type", "image/png")
+            ext_map = {
+                "image/png": "png",
+                "image/jpeg": "jpg",
+                "image/gif": "gif",
+                "image/webp": "webp",
+                "image/svg+xml": "svg",
+            }
+            ext = ext_map.get(content_type, "png")
+            img_id = "img-" + uuid_mod.uuid4().hex[:8]
+            filename = "%s.%s" % (img_id, ext)
+            md_dir = os.path.dirname(server_state.file_path)
+            images_dir = os.path.join(md_dir, "images")
+            os.makedirs(images_dir, exist_ok=True)
+            img_path = os.path.join(images_dir, filename)
+            with open(img_path, "wb") as f:
+                f.write(body)
+            relative_path = "images/" + filename
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"path": relative_path}).encode("utf-8"))
+
+        def _handle_save(self):
+            """POST /api/save：将编辑器内容写回 md 文件。"""
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+                content = data.get("content", "")
+            except (json.JSONDecodeError, KeyError):
+                self.send_error(400, "Invalid JSON")
+                return
+            if server_state.file_path:
+                with open(server_state.file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                server_state._content_cache = content
+                server_state._content_hash = hashlib.md5(
+                    content.encode("utf-8")
+                ).hexdigest()
+                server_state._last_mtime = os.path.getmtime(server_state.file_path)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
 
         def log_message(self, format, *args):
             if server_state.verbose:

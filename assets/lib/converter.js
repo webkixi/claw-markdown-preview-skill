@@ -576,6 +576,10 @@ async function copyRichText(md) {
   document.body.appendChild(tempDiv);
   convertAllPseudoElements(tempDiv);
   convertGradientBackgroundsToSvg(tempDiv);
+
+  // 将本地图片 URL 转换为 base64（公众号需要内联图片）
+  await convertLocalImagesToBase64(tempDiv);
+
   html = tempDiv.innerHTML;
   document.body.removeChild(tempDiv);
 
@@ -613,6 +617,38 @@ async function copyRichText(md) {
     document.execCommand('copy');
     document.getSelection().removeAllRanges();
   }
+}
+
+async function convertLocalImagesToBase64(container) {
+  var imgs = container.querySelectorAll('img');
+  var promises = [];
+  for (var i = 0; i < imgs.length; i++) {
+    (function (img) {
+      var src = img.getAttribute('src') || '';
+      // 只处理本地 HTTP 图片（http://127.0.0.1:port/images/...）
+      if (src.indexOf('http://') !== 0 && src.indexOf('https://') !== 0) return;
+      if (src.indexOf('127.0.0.1') === -1 && src.indexOf('localhost') === -1) return;
+      promises.push(
+        fetch(src)
+          .then(function (r) { return r.blob(); })
+          .then(function (blob) {
+            return new Promise(function (resolve, reject) {
+              var reader = new FileReader();
+              reader.onload = function () { resolve(reader.result); };
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+          })
+          .then(function (dataUri) {
+            img.setAttribute('src', dataUri);
+          })
+          .catch(function (err) {
+            console.warn('[convertLocalImagesToBase64] Failed:', src, err.message);
+          })
+      );
+    })(imgs[i]);
+  }
+  await Promise.all(promises);
 }
 
 window.CPM = {

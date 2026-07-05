@@ -443,6 +443,19 @@ button.action-btn:hover svg {
   to { opacity: 0; }
 }
 
+.img-error-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  margin: 10px 0;
+  border: 1px dashed var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-secondary);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --color-text: #F8FAFC;
