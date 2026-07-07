@@ -1,7 +1,7 @@
 ---
 name: claw-markdown-preview
 description: Markdown 预览——用户说出"预览这个 md"、"看看渲染效果"、"打开预览"、"复制富文本到公众号"、"markdown 预览"等时触发技能。
-version: 1.4.0
+version: 1.4.1
 agent_created: true
 metadata:
   openclaw:
@@ -40,69 +40,26 @@ metadata:
 - 确认目标文件路径存在且为 `.md` 文件
 - 确认 `scripts/preview_server.py` 存在且可用（路径相对于技能目录）
 
-**第一步：进程清理（避免端口冲突）**
+**执行（一条命令，替换 `<MD_FILE_PATH>` 后直接运行，无需分步或手动提取端口）：**
 
 ```bash
-# 1) 杀掉上次残留的预览服务进程（通过 PID 文件）
-PID_FILE=/tmp/claw-markdown-preview.pid
-if [ -f "$PID_FILE" ]; then
-  OLD_PID=$(cat "$PID_FILE")
-  kill "$OLD_PID" 2>/dev/null || true
-  rm -f "$PID_FILE"
+pkill -f preview_server.py 2>/dev/null; rm -f /tmp/claw-markdown-preview.pid
+nohup python3 scripts/preview_server.py --file "<MD_FILE_PATH>" --no-open --heartbeat-timeout 300 > /tmp/claw-md-preview.log 2>&1 &
+sleep 2
+if curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8765/ | grep -q 200; then
+  PORT=8765
+else
+  PORT=$(grep -oE '127\.0\.0\.1:[0-9]+' /tmp/claw-md-preview.log | head -1 | sed 's/.*://')
 fi
-
-# 2) 兜底：杀掉所有残留的 preview_server.py 进程（可能来自其他技能目录）
-pkill -f "preview_server.py" 2>/dev/null || true
+lsof -iTCP:$PORT -sTCP:LISTEN -t | head -1 > /tmp/claw-markdown-preview.pid
+open "http://127.0.0.1:$PORT"
 ```
 
-**第二步：启动预览服务（后台运行，不要阻塞等待）**
-
-```bash
-PYTHONUNBUFFERED=1 python3 \
-  scripts/preview_server.py \
-  --file "<MD_FILE_PATH>" \
-  --no-open \
-  --heartbeat-timeout 60
-```
-
-关键说明：
-- **`PYTHONUNBUFFERED=1`**：禁用 stdout 缓冲，确保启动日志立即可读（后台运行时 Python 默认缓冲 stdout，不加此变量会拿不到端口输出）
-- **`--heartbeat-timeout 60`**：后台/Agent 场景必加，默认 10 秒太短 —— 后台启动后 agent 需要读输出、检测端口、开浏览器，整个流程超过 10 秒会导致服务还没打开浏览器就自动退出
-- **`--no-open`**：禁用浏览器自动打开（由后续系统命令管理预览）
-- 上述命令需在技能目录下执行（`cd` 到技能目录）；若在其他目录，需使用 preview_server.py 的绝对路径
-- **必须在后台运行**（不要阻塞等待命令返回），否则会卡住
-
-**第三步：获取端口（两种方式，优先方式 A）**
-
-方式 A — 从后台任务输出提取（PYTHONUNBUFFERED=1 后通常 2-3 秒内可见）：
-```
-== Markdown 预览服务已启动: http://127.0.0.1:<PORT> ==
-```
-
-方式 B — 如果输出未及时出现，用 lsof 直接检测监听端口：
-```bash
-lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -i python
-# 或直接测试默认端口 8765
-curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8765/
-# 返回 200 即为服务端口
-```
-
-**第四步：记录 PID 并用浏览器打开预览**
-
-```bash
-# 用 lsof 精确获取 PID（不要用 echo $!，后台模式下拿不到正确值）
-PID=$(lsof -iTCP:<PORT> -sTCP:LISTEN -P -n -t 2>/dev/null | head -1)
-echo "$PID" > /tmp/claw-markdown-preview.pid
-
-# macOS
-open "http://127.0.0.1:<PORT>"
-
-# Linux
-xdg-open "http://127.0.0.1:<PORT>"
-
-# Windows
-start "" "http://127.0.0.1:<PORT>"
-```
+**说明：**
+- 这条命令自动完成：清理残留进程 → 启动服务（nohup 后台常驻，心跳 300 秒纯为兜底）→ 等待 2 秒就绪 → `curl` 快速探测默认端口 8765 → 被占用时从日志精确提取端口 → 记录 PID → 打开浏览器。
+- Agent 无需读输出、无需手动提取端口、无需分步返回。一条命令 5 秒走完。
+- 首次运行用默认端口 8765，`curl` 直通不进正则分支；仅端口冲突时才走日志提取降级路径。
+- 心跳 300 秒纯为兜底——正常流程碰不到超时。
 
 > **不要用 `present_files`**，内置浏览器窗口太挤，用系统命令 `open` 打开外部浏览器。
 
@@ -115,7 +72,7 @@ start "" "http://127.0.0.1:<PORT>"
 | `--stdin` | 从标准输入读取 markdown 内容 |
 | `--no-open` | 不自动打开系统浏览器（后台/Agent 场景必加） |
 | `--verbose` | 输出访问日志，便于调试 |
-| `--heartbeat-timeout <秒>` | 心跳超时秒数，页面关闭后超时自动停止服务（默认 `10`，后台/Agent 场景建议 `60`） |
+| `--heartbeat-timeout <秒>` | 心跳超时秒数，页面关闭后超时自动停止服务（默认 `10`，Agent 场景建议 `300`） |
 
 如果没有指定 `--file` 或 `--stdin`，服务启动后页面显示空编辑器，用户可自行粘贴 markdown。
 
@@ -152,12 +109,6 @@ start "" "http://127.0.0.1:<PORT>"
 - `--stdin` 模式不支持热更新和粘贴图片（内容固定）
 - 服务终止方式：`kill $(cat /tmp/claw-markdown-preview.pid)`
 
-## 后台运行与跨平台注意事项
+## 后台运行说明
 
-以下问题在实际使用中高频出现，务必注意：
-
-1. **心跳超时必须调大**：默认 `--heartbeat-timeout 10` 在后台模式下太短。Agent 从启动服务到打开浏览器需要多步操作（读输出→检测端口→记录 PID→执行 open），全程超过 10 秒会导致服务自动退出。**必须加 `--heartbeat-timeout 60`**。
-2. **stdout 缓冲**：后台运行时 Python 默认缓冲 stdout，导致启动日志（含端口号）不可读。**必须加 `PYTHONUNBUFFERED=1` 环境变量**。
-3. **PID 获取**：`echo $!` 在后台运行模式下不可靠。用 `lsof -iTCP:<PORT> -sTCP:LISTEN -t` 获取准确 PID。
-4. **残留进程**：清理时除 PID 文件外，还要 `pkill -f "preview_server.py"` 兜底，防止其他技能目录（如 `.trae/skills/`）的旧进程占用端口。
-5. **Python 路径**：使用 `python3`（frontmatter 已声明 `requires: python3`）。若某 Agent 平台提供隔离的 managed Python，可替换为该平台对应的 python 路径。
+执行入口的一条命令已自动处理心跳超时（300s 兜底）/ 输出缓冲（nohup 重定向）/ PID 获取（lsof）/ 残留清理（pkill）。若需手动启动，参考上述命令结构，务必使用 `python3`（与 frontmatter `requires: python3` 一致）而非绝对路径。
