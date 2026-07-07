@@ -38,17 +38,18 @@ body {
   font-family: var(--font-family);
   color: var(--color-text);
   display: flex;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   min-height: 100vh;
   padding: 0;
+  gap: 0;
   transition: background var(--transition-normal), padding 0.3s ease;
 }
 
 @media (min-width: 900px) {
   body {
     padding: 24px 32px;
-    align-items: center;
   }
 }
 
@@ -57,7 +58,7 @@ body {
   flex-direction: column;
   width: 100%;
   max-width: 800px;
-  height: 100vh;
+  height: calc(100vh - 50px);
   background: var(--color-bg);
   border-radius: 0;
   box-shadow: none;
@@ -74,7 +75,7 @@ body {
 @media (min-width: 900px) {
   .app-layout {
     width: calc(100vw - 64px);
-    height: calc(100vh - 48px);
+    height: calc(100vh - 98px);
     max-width: 800px;
     border-radius: 16px;
     box-shadow: var(--shadow-lg);
@@ -470,4 +471,25 @@ button.action-btn:hover svg {
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
   }
+}
+
+.app-footer {
+  flex-shrink: 0;
+  text-align: center;
+  padding: 6px 0 2px;
+  font-size: var(--font-size-base);
+  color: var(--color-text-tertiary);
+  line-height: 1.6;
+}
+
+.app-footer a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color var(--transition-normal);
+}
+
+.app-footer a:hover {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
 }

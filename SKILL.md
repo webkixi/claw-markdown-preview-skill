@@ -1,10 +1,28 @@
 ---
 name: claw-markdown-preview
-description: 预览 Markdown 文件 / 查看渲染效果 / 复制富文本到公众号。当用户说"预览这个 md"、"看看渲染效果"、"复制富文本到公众号"、"markdown 预览"、"我想看看这个文档长什么样"时自动触发。支持 22 种主题风格切换，可编辑、可双栏、可手机预览，复制按钮可将当前主题样式内联后写入剪贴板，直接粘贴到公众号编辑器即可。
-version: 1.3.0
+description: 让 AI 生成的 Markdown 立刻「看得见」。在 WorkBuddy、QClaw、OpenClaw、Hermes 等 AI 助手对话里，说一句"预览这个 md""看看渲染效果"，即可把生成的文档在浏览器渲染成精美网页——22 种主题、4 种视图（编辑/预览/双栏/手机）随意切换，不切应用、不手动开文件。四大能力：① 即时预览，AI 写完文档当场看排版/代码高亮/表格；② 富文本复制，一键拷贝带样式正文（图片自动 base64 内联），直粘公众号/知乎后台零二次排版；③ 实时编辑，双栏边写边看、所见即所得；④ 图片粘贴，编辑器内 Ctrl+V 即贴，本地图片自动内联进文档，无需手动存图传图。写技术文档、做公众号、整教程，一个技能全包。
+version: 1.4.0
 agent_created: true
 metadata:
   openclaw:
+    emoji: "📄"
+    os: ["darwin", "linux", "win32"]
+    requires:
+      bins: ["python3"]
+    install: []
+  workbuddy:
+    emoji: "📄"
+    os: ["darwin", "linux", "win32"]
+    requires:
+      bins: ["python3"]
+    install: []
+  qclaw:
+    emoji: "📄"
+    os: ["darwin", "linux", "win32"]
+    requires:
+      bins: ["python3"]
+    install: []
+  hermes:
     emoji: "📄"
     os: ["darwin", "linux", "win32"]
     requires:
@@ -25,43 +43,57 @@ metadata:
 **第一步：进程清理（避免端口冲突）**
 
 ```bash
-# 杀掉上次残留的预览服务进程
+# 1) 杀掉上次残留的预览服务进程（通过 PID 文件）
 PID_FILE=/tmp/claw-markdown-preview.pid
 if [ -f "$PID_FILE" ]; then
   OLD_PID=$(cat "$PID_FILE")
   kill "$OLD_PID" 2>/dev/null || true
   rm -f "$PID_FILE"
 fi
+
+# 2) 兜底：杀掉所有残留的 preview_server.py 进程（可能来自其他技能目录）
+pkill -f "preview_server.py" 2>/dev/null || true
 ```
 
-**第二步：启动预览服务（后台）**
+**第二步：启动预览服务（后台运行，不要阻塞等待）**
 
 ```bash
-python3 scripts/preview_server.py \
+PYTHONUNBUFFERED=1 python3 \
+  scripts/preview_server.py \
   --file "<MD_FILE_PATH>" \
-  --no-open
+  --no-open \
+  --heartbeat-timeout 60
 ```
 
-> 使用 `--no-open` 禁用浏览器自动打开（由后续系统命令管理预览）。
-> 上述命令在技能目录下执行；若在其他目录，需使用 preview_server.py 的绝对路径。
+关键说明：
+- **`PYTHONUNBUFFERED=1`**：禁用 stdout 缓冲，确保启动日志立即可读（后台运行时 Python 默认缓冲 stdout，不加此变量会拿不到端口输出）
+- **`--heartbeat-timeout 60`**：后台/Agent 场景必加，默认 10 秒太短 —— 后台启动后 agent 需要读输出、检测端口、开浏览器，整个流程超过 10 秒会导致服务还没打开浏览器就自动退出
+- **`--no-open`**：禁用浏览器自动打开（由后续系统命令管理预览）
+- 上述命令需在技能目录下执行（`cd` 到技能目录）；若在其他目录，需使用 preview_server.py 的绝对路径
+- **必须在后台运行**（不要阻塞等待命令返回），否则会卡住
 
-**第三步：记录 PID 并获取端口**
+**第三步：获取端口（两种方式，优先方式 A）**
 
-从打印日志中提取端口号：
+方式 A — 从后台任务输出提取（PYTHONUNBUFFERED=1 后通常 2-3 秒内可见）：
 ```
 == Markdown 预览服务已启动: http://127.0.0.1:<PORT> ==
 ```
 
-然后记录 PID：
+方式 B — 如果输出未及时出现，用 lsof 直接检测监听端口：
 ```bash
-echo $! > /tmp/claw-markdown-preview.pid
+lsof -iTCP -sTCP:LISTEN -P -n 2>/dev/null | grep -i python
+# 或直接测试默认端口 8765
+curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8765/
+# 返回 200 即为服务端口
 ```
 
-**第四步：用系统默认浏览器打开预览**
-
-直接用系统命令打开 URL（不要用 `present_files`，内置浏览器窗口太挤）：
+**第四步：记录 PID 并用浏览器打开预览**
 
 ```bash
+# 用 lsof 精确获取 PID（不要用 echo $!，后台模式下拿不到正确值）
+PID=$(lsof -iTCP:<PORT> -sTCP:LISTEN -P -n -t 2>/dev/null | head -1)
+echo "$PID" > /tmp/claw-markdown-preview.pid
+
 # macOS
 open "http://127.0.0.1:<PORT>"
 
@@ -72,6 +104,8 @@ xdg-open "http://127.0.0.1:<PORT>"
 start "" "http://127.0.0.1:<PORT>"
 ```
 
+> **不要用 `present_files`**，内置浏览器窗口太挤，用系统命令 `open` 打开外部浏览器。
+
 ## 可选参数
 
 | 参数 | 说明 |
@@ -79,9 +113,9 @@ start "" "http://127.0.0.1:<PORT>"
 | `--file <路径>` | 预览指定 markdown 文件 |
 | `--port <端口>` | 指定端口，默认 `8765` |
 | `--stdin` | 从标准输入读取 markdown 内容 |
-| `--no-open` | 不自动打开系统浏览器（WorkBuddy 场景必加） |
+| `--no-open` | 不自动打开系统浏览器（后台/Agent 场景必加） |
 | `--verbose` | 输出访问日志，便于调试 |
-| `--heartbeat-timeout <秒>` | 心跳超时秒数，页面关闭后超时自动停止服务（默认 `10`） |
+| `--heartbeat-timeout <秒>` | 心跳超时秒数，页面关闭后超时自动停止服务（默认 `10`，后台/Agent 场景建议 `60`） |
 
 如果没有指定 `--file` 或 `--stdin`，服务启动后页面显示空编辑器，用户可自行粘贴 markdown。
 
@@ -112,8 +146,18 @@ start "" "http://127.0.0.1:<PORT>"
 
 - 预览服务运行在 `assets/` 子目录上，文件由 `preview_server.py` 自动定位
 - 端口默认 8765，被占用时自动递增寻找空闲端口（+20 以内）
-- **热更新**：使用 `--file` 模式时，页面每 3 秒轮询文件内容变化，WorkBuddy 中修改文件后页面自动刷新（弹出"外部内容已更新"提示）
+- **热更新**：使用 `--file` 模式时，页面每 3 秒轮询文件内容变化，在 Agent 中修改文件后页面自动刷新（弹出"外部内容已更新"提示）
 - **心跳自停**：页面每 5 秒发送心跳，关闭页面后服务自动停止（正常关闭立即停止，异常退出最多等待 `--heartbeat-timeout` 秒后停止）
 - **关闭保存**：关闭页面时自动将编辑器内容写回 md 文件
 - `--stdin` 模式不支持热更新和粘贴图片（内容固定）
 - 服务终止方式：`kill $(cat /tmp/claw-markdown-preview.pid)`
+
+## 后台运行与跨平台注意事项
+
+以下问题在实际使用中高频出现，务必注意：
+
+1. **心跳超时必须调大**：默认 `--heartbeat-timeout 10` 在后台模式下太短。Agent 从启动服务到打开浏览器需要多步操作（读输出→检测端口→记录 PID→执行 open），全程超过 10 秒会导致服务自动退出。**必须加 `--heartbeat-timeout 60`**。
+2. **stdout 缓冲**：后台运行时 Python 默认缓冲 stdout，导致启动日志（含端口号）不可读。**必须加 `PYTHONUNBUFFERED=1` 环境变量**。
+3. **PID 获取**：`echo $!` 在后台运行模式下不可靠。用 `lsof -iTCP:<PORT> -sTCP:LISTEN -t` 获取准确 PID。
+4. **残留进程**：清理时除 PID 文件外，还要 `pkill -f "preview_server.py"` 兜底，防止其他技能目录（如 `.trae/skills/`）的旧进程占用端口。
+5. **Python 路径**：使用 `python3`（frontmatter 已声明 `requires: python3`）。若某 Agent 平台提供隔离的 managed Python，可替换为该平台对应的 python 路径。
