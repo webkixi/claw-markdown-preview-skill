@@ -1,6 +1,6 @@
 ---
 name: claw-markdown-preview
-description: Markdown 本地预览技能——在浏览器中渲染指定的 .md 文件，支持主题切换、实时编辑（双栏/手机视图）、富文本复制（含图片 base64 内联，可粘贴到公众号/知乎）、图片粘贴（Ctrl+V 内联）。当用户说"预览这个 md"、"看看渲染效果"、"打开预览"、"复制富文本到公众号"、"markdown 预览"等时触发。
+description: Markdown 预览——用户说出"预览这个 md"、"看看渲染效果"、"打开预览"、"复制富文本到公众号"、"markdown 预览"等时触发技能。
 version: 1.4.0
 agent_created: true
 metadata:
@@ -30,9 +30,9 @@ metadata:
     install: []
 ---
 
-# Markdown 预览 + 富文本复制
+# Markdown 编辑、多风格预览
 
-启动本地 HTTP 服务，在浏览器中打开 Markdown 预览页面。支持四种视图模式和多风格主题切换。
+通过浏览器编辑、预览AI生成的 Markdown 内容、用户本地 MarkDown 文件。支持多主题风格切换、实时编辑、富文本复制（可粘贴到公众号/知乎）、图片粘贴
 
 ## 执行入口
 
