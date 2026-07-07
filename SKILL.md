@@ -2,27 +2,8 @@
 name: claw-markdown-preview
 description: Markdown 预览——用户说出"预览这个 md"、"看看渲染效果"、"打开预览"、"复制富文本到公众号"、"markdown 预览"等时触发技能。
 version: 1.4.0
-agent_created: true
 metadata:
   openclaw:
-    emoji: "📄"
-    os: ["darwin", "linux", "win32"]
-    requires:
-      bins: ["python3"]
-    install: []
-  workbuddy:
-    emoji: "📄"
-    os: ["darwin", "linux", "win32"]
-    requires:
-      bins: ["python3"]
-    install: []
-  qclaw:
-    emoji: "📄"
-    os: ["darwin", "linux", "win32"]
-    requires:
-      bins: ["python3"]
-    install: []
-  hermes:
     emoji: "📄"
     os: ["darwin", "linux", "win32"]
     requires:
