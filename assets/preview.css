@@ -445,18 +445,33 @@ button.action-btn:hover svg {
 
 /* ========== 保存按钮 + 保存提示 ========== */
 
-#saveBtn.action-btn.save-btn {
-  width: auto;
-  padding: 0 12px;
-  font-size: var(--font-size-sm);
-  gap: 6px;
-  display: flex;
+#saveBtn {
+  display: inline-flex;
   align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  transition: all 0.2s ease;
   white-space: nowrap;
+  outline: none;
 }
-#saveBtn.action-btn.save-btn svg {
-  width: 15px;
-  height: 15px;
+#saveBtn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-bg, rgba(59, 130, 246, 0.06));
+}
+#saveBtn:active {
+  transform: scale(0.96);
+}
+#saveBtn svg {
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
 }
 
