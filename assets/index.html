@@ -153,7 +153,7 @@ function saveToFile(silent) {
     hasUnsavedChanges = false;
     isSaving = false;
     if (data && data.hash) lastHash = data.hash;
-    if (!silent) showSaveIndicator();
+    if (!silent) { showToast('已保存'); showSaveIndicator(); }
   })
   .catch(function () { isSaving = false; });
 }
