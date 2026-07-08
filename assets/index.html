@@ -127,6 +127,7 @@ var previewScrollHandler = null;
 var cmEditor = null;
 var hasUnsavedChanges = false;
 var saveTimer = null;
+var isSaving = false;
 
 function getMarkdownContent() {
   return MD_CONTENT || '';
@@ -140,6 +141,7 @@ function getEditorContent() {
 }
 
 function saveToFile(silent) {
+  isSaving = true;
   var content = getEditorContent();
   fetch('/api/save', {
     method: 'POST',
@@ -149,10 +151,11 @@ function saveToFile(silent) {
   .then(function (r) { return r.json(); })
   .then(function (data) {
     hasUnsavedChanges = false;
+    isSaving = false;
     if (data && data.hash) lastHash = data.hash;
     if (!silent) showSaveIndicator();
   })
-  .catch(function () {});
+  .catch(function () { isSaving = false; });
 }
 
 function showSaveIndicator() {
@@ -518,6 +521,7 @@ function startHotReload() {
 
 function checkHash() {
   if (hasUnsavedChanges) return;  // 用户正在编辑，跳过热更新
+  if (isSaving) return;          // 保存中，等回包同步 hash 后再查
   fetch('/api/markdown-hash')
     .then(function (r) { return r.json(); })
     .then(function (data) {
