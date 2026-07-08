@@ -406,11 +406,10 @@ function startHeartbeat() {
   // 每 5 秒发一次
   heartbeatTimer = setInterval(sendHeartbeat, 5000);
 
-  // 页面关闭时保存内容并通知服务端停止
+  // 页面关闭时通知服务端停止；有未保存内容则弹确认框
   window.addEventListener('beforeunload', function (e) {
     try {
-      var content = getEditorContent();
-      navigator.sendBeacon('/api/close', JSON.stringify({ content: content }));
+      navigator.sendBeacon('/api/close', '{}');
     } catch (err) {}
     if (hasUnsavedChanges) {
       e.preventDefault();
