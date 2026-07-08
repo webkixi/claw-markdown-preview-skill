@@ -515,6 +515,7 @@ function startHotReload() {
 }
 
 function checkHash() {
+  if (hasUnsavedChanges) return;  // 用户正在编辑，跳过热更新
   fetch('/api/markdown-hash')
     .then(function (r) { return r.json(); })
     .then(function (data) {
