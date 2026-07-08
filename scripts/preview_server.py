@@ -114,13 +114,11 @@ def make_handler(server_state):
                 html = f.read()
 
             md_content = server_state.get_content()
-            if md_content:
-                import html as html_mod
-                md_encoded = html_mod.escape(md_content)
-                html = html.replace(
-                    '<script id="md-source" type="text/markdown"></script>',
-                    '<script id="md-source" type="text/markdown">%s</script>' % md_encoded
-                )
+            md_json = json.dumps(md_content)
+            html = html.replace(
+                'var MD_CONTENT = null;',
+                'var MD_CONTENT = %s;' % md_json
+            )
 
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
