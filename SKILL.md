@@ -48,7 +48,7 @@ metadata:
 
 ```bash
 pkill -f preview_server.py 2>/dev/null; rm -f /tmp/claw-markdown-preview.pid
-nohup python3 scripts/preview_server.py --file "<MD_FILE_PATH>" --no-open --heartbeat-timeout 300 > /tmp/claw-md-preview.log 2>&1 &
+nohup python3 scripts/preview_server.py --file "<MD_FILE_PATH>" --no-open --heartbeat-timeout 30 > /tmp/claw-md-preview.log 2>&1 &
 sleep 2
 if curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8765/ | grep -q 200; then
   PORT=8765
@@ -60,10 +60,10 @@ open "http://127.0.0.1:$PORT"
 ```
 
 **说明：**
-- 这条命令自动完成：清理残留进程 → 启动服务（nohup 后台常驻，心跳 300 秒纯为兜底）→ 等待 2 秒就绪 → `curl` 快速探测默认端口 8765 → 被占用时从日志精确提取端口 → 记录 PID → 打开浏览器。
+- 这条命令自动完成：清理残留进程 → 启动服务（nohup 后台常驻，心跳 30 秒纯为兜底）→ 等待 2 秒就绪 → `curl` 快速探测默认端口 8765 → 被占用时从日志精确提取端口 → 记录 PID → 打开浏览器。
 - Agent 无需读输出、无需手动提取端口、无需分步返回。一条命令 5 秒走完。
 - 首次运行用默认端口 8765，`curl` 直通不进正则分支；仅端口冲突时才走日志提取降级路径。
-- 心跳 300 秒纯为兜底——正常流程碰不到超时。
+- 心跳 30 秒纯为兜底——正常流程碰不到超时。
 
 > **不要用 `present_files`**，内置浏览器窗口太挤，用系统命令 `open` 打开外部浏览器。
 
@@ -76,7 +76,7 @@ open "http://127.0.0.1:$PORT"
 | `--stdin` | 从标准输入读取 markdown 内容 |
 | `--no-open` | 不自动打开系统浏览器（后台/Agent 场景必加） |
 | `--verbose` | 输出访问日志，便于调试 |
-| `--heartbeat-timeout <秒>` | 心跳超时秒数，页面关闭后超时自动停止服务（默认 `10`，Agent 场景建议 `300`） |
+| `--heartbeat-timeout <秒>` | 心跳超时秒数，页面关闭后超时自动停止服务（默认 `10`，Agent 场景建议 `30`） |
 
 如果没有指定 `--file` 或 `--stdin`，服务启动后页面显示空编辑器，用户可自行粘贴 markdown。
 
@@ -115,4 +115,4 @@ open "http://127.0.0.1:$PORT"
 
 ## 后台运行说明
 
-执行入口的一条命令已自动处理心跳超时（300s 兜底）/ 输出缓冲（nohup 重定向）/ PID 获取（lsof）/ 残留清理（pkill）。若需手动启动，参考上述命令结构，务必使用 `python3`（与 frontmatter `requires: python3` 一致）而非绝对路径。
+执行入口的一条命令已自动处理心跳超时（30s 兜底）/ 输出缓冲（nohup 重定向）/ PID 获取（lsof）/ 残留清理（pkill）。若需手动启动，参考上述命令结构，务必使用 `python3`（与 frontmatter `requires: python3` 一致）而非绝对路径。
