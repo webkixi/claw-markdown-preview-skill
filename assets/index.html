@@ -552,6 +552,7 @@ function reloadContent() {
       // 更新预览
       updatePreview();
       hasUnsavedChanges = false;
+      showToast('外部内容已更新');
     })
     .catch(function () {});
 }
