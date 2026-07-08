@@ -257,7 +257,7 @@ def make_handler(server_state):
             self.send_response(200)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.end_headers()
-            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
+            self.wfile.write(json.dumps({"ok": True, "hash": server_state._content_hash}).encode("utf-8"))
 
         def log_message(self, format, *args):
             if server_state.verbose:

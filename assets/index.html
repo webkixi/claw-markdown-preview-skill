@@ -146,8 +146,10 @@ function saveToFile(silent) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content: content })
   })
-  .then(function () {
+  .then(function (r) { return r.json(); })
+  .then(function (data) {
     hasUnsavedChanges = false;
+    if (data && data.hash) lastHash = data.hash;
     if (!silent) showSaveIndicator();
   })
   .catch(function () {});
