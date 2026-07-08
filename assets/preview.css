@@ -65,6 +65,7 @@ body {
   border: none;
   overflow: hidden;
   transition: max-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-bottom: 5px;
 }
 
 /* 双栏模式自动加宽 */
@@ -87,6 +88,31 @@ body {
   }
 }
 
+.brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-bg);
+  flex-shrink: 0;
+  gap: 12px;
+}
+.brand-subtitle {
+  font-size: var(--font-size-xs);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+.brand-subtitle a {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: 500;
+}
+.brand-subtitle a:hover {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+}
+
 .app-header {
   display: flex;
   align-items: center;
@@ -98,16 +124,23 @@ body {
   gap: 12px;
 }
 
-.app-header-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
 .app-header-right {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  #saveBtn {
+    width: 28px !important;
+    padding: 0 !important;
+    font-size: 0 !important;
+    gap: 0 !important;
+  }
+  #saveBtn svg {
+    margin: 0 !important;
+  }
 }
 
 .app-brand {
@@ -527,23 +560,4 @@ button.action-btn:hover svg {
   }
 }
 
-.app-footer {
-  flex-shrink: 0;
-  text-align: center;
-  padding: 6px 0 2px;
-  font-size: var(--font-size-base);
-  color: var(--color-text-tertiary);
-  line-height: 1.6;
-}
-
-.app-footer a {
-  color: var(--color-primary);
-  text-decoration: none;
-  font-weight: 500;
-  transition: color var(--transition-normal);
-}
-
-.app-footer a:hover {
-  color: var(--color-primary-hover);
-  text-decoration: underline;
 }
