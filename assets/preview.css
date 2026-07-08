@@ -442,6 +442,43 @@ button.action-btn:hover svg {
 @keyframes toastOut {
   from { opacity: 1; }
   to { opacity: 0; }
+
+/* ========== 保存按钮 + 保存提示 ========== */
+
+#saveBtn.action-btn.save-btn {
+  width: auto;
+  padding: 0 12px;
+  font-size: var(--font-size-sm);
+  gap: 6px;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+#saveBtn.action-btn.save-btn svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+.save-indicator {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: rgba(31, 41, 55, 0.92);
+  color: #4ade80;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: var(--font-size-sm);
+  z-index: 1000;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.25s ease;
+  pointer-events: none;
+}
+.save-indicator.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
 }
 
 .img-error-placeholder {

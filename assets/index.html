@@ -74,6 +74,10 @@
           <option value="vscode-light">VS Code Light</option>
           <option value="xcode">Xcode</option>
         </select>
+          <button id="saveBtn" class="action-btn save-btn" title="保存 (Cmd+S)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+            保存
+          </button>
       </div>
     </div>
 
@@ -101,6 +105,7 @@
     由 <a href="https://webkixi.github.io/clawmarkdown-home/" target="_blank" rel="noopener noreferrer">clawMarkDown</a> 提供支持
   </div>
 
+  <div id="saveIndicator" class="save-indicator">已保存 ✓</div>
   <script id="md-source" type="text/markdown"></script>
 
   <script src="lib/markdown-it.min.js"></script>
@@ -123,6 +128,8 @@
 var syncScrollLock = false;
 var previewScrollHandler = null;
 var cmEditor = null;
+var hasUnsavedChanges = false;
+var saveTimer = null;
 
 function getMarkdownContent() {
   var src = document.getElementById('md-source');
@@ -134,6 +141,30 @@ function getEditorContent() {
     return cmEditor.state.doc.toString();
   }
   return getMarkdownContent();
+}
+
+function saveToFile(silent) {
+  var content = getEditorContent();
+  fetch('/api/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content: content })
+  })
+  .then(function () {
+    hasUnsavedChanges = false;
+    if (!silent) showSaveIndicator();
+  })
+  .catch(function () {});
+}
+
+function showSaveIndicator() {
+  var el = document.getElementById('saveIndicator');
+  if (!el) return;
+  el.classList.add('visible');
+  clearTimeout(el._hideTimer);
+  el._hideTimer = setTimeout(function () {
+    el.classList.remove('visible');
+  }, 1000);
 }
 
 function showToast(msg) {
@@ -203,10 +234,13 @@ function initCodeMirror(content) {
   if (window.ClawMark && window.ClawMark.createEditor) {
     cmEditor = window.ClawMark.createEditor(container, {
       content: content || '',
-      onChange: function (newContent) {
-        if (window._previewTimer) clearTimeout(window._previewTimer);
-        window._previewTimer = setTimeout(updatePreview, 300);
-      },
+        onChange: function (newContent) {
+          if (window._previewTimer) clearTimeout(window._previewTimer);
+          window._previewTimer = setTimeout(updatePreview, 300);
+          hasUnsavedChanges = true;
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(function () { saveToFile(true); }, 5000);
+        },
     });
 
     var editorEdit = document.getElementById('editorEdit');
@@ -237,6 +271,9 @@ function initCodeMirror(content) {
     textarea.addEventListener('input', function () {
       if (window._previewTimer) clearTimeout(window._previewTimer);
       window._previewTimer = setTimeout(updatePreview, 300);
+      hasUnsavedChanges = true;
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(function () { saveToFile(true); }, 5000);
     });
     cmEditor = null;
     container.appendChild(textarea);
@@ -336,6 +373,17 @@ function init() {
 
   document.getElementById('copyRichBtn').addEventListener('click', copyRichText);
 
+  var saveBtn = document.getElementById('saveBtn');
+  if (saveBtn) saveBtn.addEventListener('click', function () { saveToFile(false); });
+
+  /* Cmd/Ctrl+S 保存快捷键 */
+  document.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault();
+      saveToFile(false);
+    }
+  });
+
   /* 粘贴图片：监听编辑区 paste 事件 */
   setupPasteHandler();
 
@@ -359,11 +407,15 @@ function startHeartbeat() {
   heartbeatTimer = setInterval(sendHeartbeat, 5000);
 
   // 页面关闭时保存内容并通知服务端停止
-  window.addEventListener('beforeunload', function () {
+  window.addEventListener('beforeunload', function (e) {
     try {
       var content = getEditorContent();
       navigator.sendBeacon('/api/close', JSON.stringify({ content: content }));
-    } catch (e) {}
+    } catch (err) {}
+    if (hasUnsavedChanges) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
   });
 }
 
@@ -499,6 +551,7 @@ function reloadContent() {
 
       // 更新预览
       updatePreview();
+      hasUnsavedChanges = false;
       showToast('外部内容已更新');
     })
     .catch(function () {});
