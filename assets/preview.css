@@ -454,18 +454,19 @@ button.action-btn:hover svg {
   min-width: 28px;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(128,128,128,0.2);
   border-radius: 6px;
-  background: var(--color-bg);
-  color: var(--color-text-secondary);
+  background: rgba(128,128,128,0.06);
+  color: var(--color-text);
   cursor: pointer;
   transition: all 0.2s ease;
   outline: none;
+  box-sizing: border-box;
 }
 #saveBtn:hover {
   color: var(--color-primary);
   border-color: var(--color-primary);
-  background: var(--color-primary-bg, rgba(59, 130, 246, 0.06));
+  background: var(--color-primary-bg, rgba(59, 130, 246, 0.08));
 }
 #saveBtn:active {
   transform: scale(0.96);
