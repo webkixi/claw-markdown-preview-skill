@@ -1,8 +1,7 @@
 ---
 name: claw-markdown-preview
-description: Markdown 预览——用户说出"预览这个 md"、"看看渲染效果"、"打开预览"、"复制富文本到公众号"、"markdown 预览"等时触发技能。
-version: 1.4.5
-agent_created: true
+description: Markdown 本地预览技能。用户明确请求"预览这个 markdown 文件"或"打开 markdown 预览"时触发。
+version: 1.4.6
 metadata:
   openclaw:
     emoji: "📄"
@@ -10,24 +9,11 @@ metadata:
     requires:
       bins: ["python3"]
     install: []
-  workbuddy:
-    emoji: "📄"
-    os: ["darwin", "linux", "win32"]
-    requires:
-      bins: ["python3"]
-    install: []
-  qclaw:
-    emoji: "📄"
-    os: ["darwin", "linux", "win32"]
-    requires:
-      bins: ["python3"]
-    install: []
-  hermes:
-    emoji: "📄"
-    os: ["darwin", "linux", "win32"]
-    requires:
-      bins: ["python3"]
-    install: []
+    permissions:
+      - filesystem:read
+      - filesystem:write
+      - network:localhost
+      - process:spawn
 ---
 
 # Markdown 编辑、多风格预览
@@ -36,7 +22,7 @@ metadata:
 
 ## 触发方式
 
-当用户说出"预览这个 md""看看渲染效果""打开预览""markdown 预览""预览一下"等时触发。
+当用户明确请求"预览这个 markdown 文件""打开 markdown 预览""markdown 预览一下"时触发。非 Markdown 预览请求（如普通文本渲染、图片查看）不触发。
 
 ## 执行入口
 
@@ -46,14 +32,16 @@ metadata:
 
 **执行（两步，替换 `<MD_FILE_PATH>` 后运行）：**
 
-**第 1 步 —— 以「托管后台任务」方式启动服务（关键：必须是脱离命令进程树的独立任务，绝不能用命令里 `nohup … &` 这种挂在返回命令下的写法，否则命令一返回、进程树被清理，服务就跟着死）：**
+**第 1 步 —— 以「托管后台任务」方式启动服务（关键：必须是脱离命令进程树的独立任务，绝不能用命令内 `&` 把服务挂到返回命令的进程树下，否则命令一返回、进程树被清理，服务就跟着死）：**
 
 ```bash
 pkill -f preview_server.py 2>/dev/null; rm -f /tmp/claw-markdown-preview.pid
+# 注意：上面这行会终止本技能此前运行的所有预览服务实例（若你已在别处开着预览，会被一并关闭）。
+# 这是当前单实例清理逻辑；多实例共存为待办项，启用后改为只终止自身实例。
 python3 scripts/preview_server.py --file "<MD_FILE_PATH>" --no-open --heartbeat-timeout 30 > /tmp/claw-md-preview.log 2>&1
 ```
 
-> 用 Bash 工具的后台 / 托管任务模式运行上面整条命令，让服务常驻、不随某条命令返回而结束。若运行环境没有托管任务机制，退而用 `setsid nohup python3 … &` 把服务拆到独立会话，效果等同。
+> 用 Bash 工具的后台 / 托管任务模式运行上面整条命令，让服务常驻、不随某条命令返回而结束。若运行环境没有托管任务机制，退而用 `setsid python3 … &` 把服务拆到独立会话，效果等同。
 
 **第 2 步 —— 探测端口并打开浏览器（普通命令即可）：**
 
@@ -102,15 +90,14 @@ open "http://127.0.0.1:$PORT"
 
 ## 富文本复制
 
-点击预览区的复制按钮，将当前主题样式内联后的 HTML 写入剪贴板，可直接粘贴到公众号编辑器等平台。复制时本地图片会自动转换为 base64 内联，公众号粘贴后自动识别。
+点击预览区的复制按钮，将当前主题样式内联后的 HTML 写入剪贴板，可直接粘贴到公众号编辑器等平台。复制时会 `fetch` 本地预览服务（仅监听 `127.0.0.1`）的图片并内联为 base64，不访问任何其它外部地址，公众号粘贴后自动识别本地图片。
 
 ## 粘贴图片
 
-在编辑模式或双栏模式下，可直接粘贴剪贴板中的图片（Ctrl+V / Cmd+V）。图片会自动保存到 md 文件同目录的 `images/` 子目录，并在编辑器中插入标准 Markdown 图片语法 `![](images/img-xxx.png)`。
+在编辑模式或双栏模式下，可直接粘贴剪贴板中的图片（Ctrl+V / Cmd+V）。预览页会拦截默认粘贴动作，将图片经由本地预览服务（仅监听 `127.0.0.1`）的 `/api/image` 端点写入本地磁盘、保存到被预览 Markdown 同目录的 `images/` 文件夹，并插入本地引用 `![](images/img-xxx.png)`。整个过程不出本机、不经任何外部服务器。
 
 - 单张图片大小限制 5MB
 - 图片以文件形式存储，跟随 md 文件，换浏览器/电脑不丢失
-- 关闭页面时自动保存编辑器内容回 md 文件
 
 ## 注意事项
 
@@ -118,10 +105,10 @@ open "http://127.0.0.1:$PORT"
 - 端口默认 8765，被占用时自动递增寻找空闲端口（+20 以内）
 - **热更新**：使用 `--file` 模式时，页面每 3 秒轮询文件内容变化，在 Agent 中修改文件后页面自动刷新（弹出"外部内容已更新"提示）
 - **心跳自停**：页面每 5 秒发送心跳，关闭页面后服务自动停止（正常关闭立即停止，异常退出最多等待 `--heartbeat-timeout` 秒后停止）
-- **关闭保存**：关闭页面时自动将编辑器内容写回 md 文件
+- **⚠️ 编辑即自动保存并覆盖原文件**：在编辑器中修改后停顿约 5 秒，内容会自动经 `/api/save` 写回被预览的 md 文件并覆盖原内容（无备份）；也可点"保存"按钮手动保存。关闭预览页面**不会**自动保存，如有未保存改动会提示确认离开，离开则未保存内容丢弃。
 - `--stdin` 模式不支持热更新和粘贴图片（内容固定）
 - 服务终止方式：`kill $(cat /tmp/claw-markdown-preview.pid)`
 
 ## 后台运行说明
 
-执行入口第 1 步以「托管后台任务」方式常驻服务（脱离启动命令的进程树，命令返回也不会被回收）；第 2 步负责端口探测（curl）/ PID 获取（lsof）/ 残留清理（pkill）。若需手动启动，参考上述命令结构，务必使用 `python3`（与 frontmatter `requires: python3` 一致）而非绝对路径；切勿用命令内 `nohup … &` 这类挂在返回命令下的写法，否则服务会被进程树清理杀掉。
+执行入口第 1 步以「托管后台任务」方式常驻服务（脱离启动命令的进程树，命令返回也不会被回收）；第 2 步负责端口探测（curl）/ PID 获取（lsof）/ 残留清理（pkill）。若需手动启动，参考上述命令结构，务必使用 `python3`（与 frontmatter `requires: python3` 一致）而非绝对路径；切勿用命令内 `&` 把服务挂到返回命令的进程树下的写法，否则服务会被进程树清理杀掉。

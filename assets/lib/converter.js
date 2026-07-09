@@ -73,17 +73,35 @@ function cleanMathElements(html) {
   return result;
 }
 
-async function renderMermaidBlockViaAPI(content) {
+let _mermaidInitialized = false;
+function ensureMermaid() {
+  if (_mermaidInitialized || !window.mermaid) return;
   try {
-    const response = await fetch('https://kroki.io/mermaid/svg', {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: content
+    window.mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'strict',
     });
-    if (!response.ok) throw new Error('HTTP ' + response.status);
-    return await response.text();
+    _mermaidInitialized = true;
   } catch (e) {
-    console.warn('[Mermaid] kroki.io error:', e.message);
+    console.warn('[Mermaid] init failed:', e.message);
+  }
+}
+
+// 本地浏览器端渲染 Mermaid（不依赖任何外部服务），与预览自身一样完全在用户机器上运行
+async function renderMermaidBlockLocal(content) {
+  ensureMermaid();
+  if (!window.mermaid || !window.mermaid.render) {
+    console.warn('[Mermaid] library not available');
+    return null;
+  }
+  try {
+    const id = 'mermaid-' + Math.random().toString(36).slice(2, 10);
+    const result = await window.mermaid.render(id, content);
+    const svg = typeof result === 'string' ? result : (result && result.svg);
+    return svg || null;
+  } catch (e) {
+    console.warn('[Mermaid] render error:', e.message);
     return null;
   }
 }
@@ -98,7 +116,7 @@ async function renderMermaidBlocks(container) {
     if (!content) continue;
     const pre = code.parentElement;
     renders.push(
-      renderMermaidBlockViaAPI(content).then(svg => {
+      renderMermaidBlockLocal(content).then(svg => {
         if (svg) {
           const wrapper = document.createElement('div');
           wrapper.className = 'mermaid-svg';
