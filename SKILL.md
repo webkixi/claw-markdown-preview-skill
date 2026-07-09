@@ -1,7 +1,7 @@
 ---
 name: claw-markdown-preview
 description: Markdown 本地预览技能。用户明确请求"预览这个 markdown 文件"或"打开 markdown 预览"时触发。
-version: 1.4.6
+version: 1.4.7
 metadata:
   openclaw:
     emoji: "📄"

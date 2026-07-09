@@ -347,7 +347,7 @@ async function copyRichText() {
     var md = getEditorContent();
     if (!md) { showToast('没有可复制的内容'); return; }
     await window.CPM.copyRichText(md);
-    showToast('富文本已复制');
+    showToast('富文本已复制（本地图片已内联）');
   } catch (e) {
     console.error('[copyRichText]', e.message);
     showToast('复制失败: ' + e.message);
@@ -478,7 +478,7 @@ function uploadImage(blob) {
       if (!data.path) throw new Error('上传失败');
       var md = '![](' + data.path + ')';
       insertAtCursor(md);
-      showToast('图片已插入');
+      showToast('图片已保存到 images/ 目录并插入');
     })
     .catch(function (err) {
       showToast('图片上传失败: ' + err.message);
