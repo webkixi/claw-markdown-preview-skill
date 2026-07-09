@@ -1,7 +1,7 @@
 ---
 name: claw-markdown-preview
 description: Markdown 预览——用户说出"预览这个 md"、"看看渲染效果"、"打开预览"、"复制富文本到公众号"、"markdown 预览"等时触发技能。
-version: 1.4.4
+version: 1.4.5
 agent_created: true
 metadata:
   openclaw:
@@ -44,11 +44,20 @@ metadata:
 - 确认目标文件路径存在且为 `.md` 文件
 - 确认 `scripts/preview_server.py` 存在且可用（路径相对于技能目录）
 
-**执行（一条命令，替换 `<MD_FILE_PATH>` 后直接运行，无需分步或手动提取端口）：**
+**执行（两步，替换 `<MD_FILE_PATH>` 后运行）：**
+
+**第 1 步 —— 以「托管后台任务」方式启动服务（关键：必须是脱离命令进程树的独立任务，绝不能用命令里 `nohup … &` 这种挂在返回命令下的写法，否则命令一返回、进程树被清理，服务就跟着死）：**
 
 ```bash
 pkill -f preview_server.py 2>/dev/null; rm -f /tmp/claw-markdown-preview.pid
-nohup python3 scripts/preview_server.py --file "<MD_FILE_PATH>" --no-open --heartbeat-timeout 30 > /tmp/claw-md-preview.log 2>&1 &
+python3 scripts/preview_server.py --file "<MD_FILE_PATH>" --no-open --heartbeat-timeout 30 > /tmp/claw-md-preview.log 2>&1
+```
+
+> 用 Bash 工具的后台 / 托管任务模式运行上面整条命令，让服务常驻、不随某条命令返回而结束。若运行环境没有托管任务机制，退而用 `setsid nohup python3 … &` 把服务拆到独立会话，效果等同。
+
+**第 2 步 —— 探测端口并打开浏览器（普通命令即可）：**
+
+```bash
 sleep 2
 if curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8765/ | grep -q 200; then
   PORT=8765
@@ -60,10 +69,10 @@ open "http://127.0.0.1:$PORT"
 ```
 
 **说明：**
-- 这条命令自动完成：清理残留进程 → 启动服务（nohup 后台常驻，心跳 30 秒纯为兜底）→ 等待 2 秒就绪 → `curl` 快速探测默认端口 8765 → 被占用时从日志精确提取端口 → 记录 PID → 打开浏览器。
-- Agent 无需读输出、无需手动提取端口、无需分步返回。一条命令 5 秒走完。
+- 第 1 步把服务跑成托管后台任务（常驻、脱离启动命令的进程树），第 2 步再探测端口并打开浏览器。两步拆分是为了让服务不被启动命令的进程树回收而误杀。
+- 服务启动后：`curl` 快速探测默认端口 8765 → 被占用时从日志精确提取端口 → 记录 PID → 打开浏览器。
 - 首次运行用默认端口 8765，`curl` 直通不进正则分支；仅端口冲突时才走日志提取降级路径。
-- 心跳 30 秒纯为兜底——正常流程碰不到超时。
+- 心跳 30 秒纯为兜底——页面关闭后最多等待 30 秒自停，正常预览流程碰不到超时。
 
 > **不要用 `present_files`**，内置浏览器窗口太挤，用系统命令 `open` 打开外部浏览器。
 
@@ -115,4 +124,4 @@ open "http://127.0.0.1:$PORT"
 
 ## 后台运行说明
 
-执行入口的一条命令已自动处理心跳超时（30s 兜底）/ 输出缓冲（nohup 重定向）/ PID 获取（lsof）/ 残留清理（pkill）。若需手动启动，参考上述命令结构，务必使用 `python3`（与 frontmatter `requires: python3` 一致）而非绝对路径。
+执行入口第 1 步以「托管后台任务」方式常驻服务（脱离启动命令的进程树，命令返回也不会被回收）；第 2 步负责端口探测（curl）/ PID 获取（lsof）/ 残留清理（pkill）。若需手动启动，参考上述命令结构，务必使用 `python3`（与 frontmatter `requires: python3` 一致）而非绝对路径；切勿用命令内 `nohup … &` 这类挂在返回命令下的写法，否则服务会被进程树清理杀掉。
