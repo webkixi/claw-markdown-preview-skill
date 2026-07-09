@@ -1,7 +1,7 @@
 ---
 name: claw-markdown-preview
 description: Markdown 本地预览技能。用户明确请求"预览这个 markdown 文件"或"打开 markdown 预览"时触发。
-version: 1.4.7
+version: 1.4.8
 metadata:
   openclaw:
     emoji: "📄"
@@ -46,10 +46,16 @@ python3 scripts/preview_server.py --file "<MD_FILE_PATH>" --no-open --heartbeat-
 **第 2 步 —— 探测端口并打开浏览器（普通命令即可）：**
 
 ```bash
-sleep 2
-if curl -s -o /dev/null -w '%{http_code}' --max-time 2 http://127.0.0.1:8765/ | grep -q 200; then
-  PORT=8765
-else
+# 就绪轮询：服务绑定端口后即可响应，不必固定等待 2 秒（跨平台通用，不依赖任何运行时专属能力）
+PORT=8765
+for i in $(seq 1 20); do
+  if curl -s -o /dev/null -w '%{http_code}' --max-time 1 "http://127.0.0.1:$PORT/" | grep -q 200; then
+    break
+  fi
+  sleep 0.1
+done
+# 若默认端口仍未就绪（如端口冲突），从日志提取实际端口
+if ! curl -s -o /dev/null -w '%{http_code}' --max-time 1 "http://127.0.0.1:$PORT/" | grep -q 200; then
   PORT=$(grep -oE '127\.0\.0\.1:[0-9]+' /tmp/claw-md-preview.log | head -1 | sed 's/.*://')
 fi
 lsof -iTCP:$PORT -sTCP:LISTEN -t | head -1 > /tmp/claw-markdown-preview.pid
