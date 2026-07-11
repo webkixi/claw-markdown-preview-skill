@@ -1,7 +1,7 @@
 ---
 name: claw-markdown-preview
 description: Local Markdown preview skill. Trigger when the user explicitly asks to preview a markdown file — e.g. "preview this markdown file", "open markdown preview", "markdown preview", or the Chinese "预览这个 markdown 文件" / "打开 markdown 预览" / "markdown 预览一下".
-version: 1.4.11
+version: 1.4.9
 metadata:
   openclaw:
     emoji: "📄"
@@ -18,12 +18,14 @@ metadata:
 
 # Markdown 编辑、多风格预览 / Markdown Editing & Multi-style Preview
 
-通过浏览器编辑、预览AI生成的 Markdown 内容、用户本地 MarkDown 文件。支持多主题风格切换、实时编辑、富文本复制（可粘贴到公众号/知乎）、图片粘贴
+通过浏览器编辑、预览AI生成的 Markdown 内容、用户本地 MarkDown 文件。支持多主题风格切换、实时编辑、富文本复制（可粘贴到公众号/知乎）、图片粘贴  
+
 Edit & preview AI-generated or local Markdown in the browser. Multi-theme switching, live editing, rich-text copy (for WeChat/Zhihu), and image paste.
 
 ## 触发方式 / Trigger
 
-当用户明确请求预览 Markdown 文件时触发，例如："预览这个 markdown 文件" / "打开 markdown 预览" / "markdown 预览一下"。非 Markdown 预览请求（如普通文本渲染、图片查看）不触发。
+当用户明确请求预览 Markdown 文件时触发，例如："预览这个 markdown 文件" / "打开 markdown 预览" / "markdown 预览一下"。非 Markdown 预览请求（如普通文本渲染、图片查看）不触发。  
+
 Triggers when the user explicitly asks to preview a Markdown file, e.g. "预览这个 markdown 文件" / "打开 markdown 预览" / "markdown 预览一下". Not for generic text rendering or image viewing.
 
 ## 执行入口
