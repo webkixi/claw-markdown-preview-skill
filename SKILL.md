@@ -1,7 +1,7 @@
 ---
 name: claw-markdown-preview
 description: Local Markdown preview skill. Trigger when the user explicitly asks to preview a markdown file — e.g. "preview this markdown file", "open markdown preview", "markdown preview", or the Chinese "预览这个 markdown 文件" / "打开 markdown 预览" / "markdown 预览一下".
-version: 1.4.9
+version: 1.4.10
 metadata:
   openclaw:
     emoji: "📄"
