@@ -32,10 +32,38 @@ def find_free_port(start_port):
     return start_port
 
 
+def get_prefs_path():
+    """返回跨平台的用户偏好存储路径（不放在技能目录内，重装不丢）。"""
+    if os.name == 'nt':
+        base = os.environ.get('APPDATA') or os.path.expanduser('~')
+        return os.path.join(base, 'claw-markdown-preview', 'prefs.json')
+    return os.path.join(os.path.expanduser('~'), '.config', 'claw-markdown-preview', 'prefs.json')
+
+
+def load_prefs():
+    """读取用户偏好，失败返回空 dict。"""
+    try:
+        with open(get_prefs_path(), 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
+        return {}
+
+
+def save_prefs(data):
+    """写入用户偏好，父目录不存在则创建。"""
+    path = get_prefs_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass
+
+
 class PreviewServer:
     """共享状态容器，供 HTTP handler 和心跳线程访问。"""
 
-    def __init__(self, file_path=None, stdin_content=None, heartbeat_timeout=10):
+    def __init__(self, file_path=None, stdin_content=None, heartbeat_timeout=7200):
         self.file_path = file_path          # 本地 md 文件路径（None 表示 stdin 模式）
         self.stdin_content = stdin_content  # stdin 模式下的固定内容
         self.heartbeat_timeout = heartbeat_timeout
@@ -89,6 +117,8 @@ def make_handler(server_state):
                 return self._serve_hash()
             elif self.path == "/api/close":
                 return self._handle_close()
+            elif self.path == "/api/prefs":
+                return self._serve_prefs()
             elif self.path.startswith("/images/"):
                 return self._serve_image()
             return super().do_GET()
@@ -102,6 +132,8 @@ def make_handler(server_state):
                 return self._handle_save()
             elif self.path == "/api/close":
                 return self._handle_close_with_save()
+            elif self.path == "/api/prefs":
+                return self._handle_prefs_save()
             self.send_error(404, "Not Found")
 
         def _serve_index(self):
@@ -118,6 +150,15 @@ def make_handler(server_state):
             html = html.replace(
                 'var MD_CONTENT = null;',
                 'var MD_CONTENT = %s;' % md_json
+            )
+
+            prefs = load_prefs()
+            html = html.replace(
+                'var SAVED_PREFS = null;',
+                'var SAVED_PREFS = %s;' % json.dumps({
+                    "previewStyle": prefs.get("previewStyle"),
+                    "codeTheme": prefs.get("codeTheme"),
+                }, ensure_ascii=False)
             )
 
             self.send_response(200)
@@ -143,6 +184,38 @@ def make_handler(server_state):
             self.wfile.write(json.dumps(
                 {"hash": h}, ensure_ascii=False
             ).encode("utf-8"))
+
+        def _serve_prefs(self):
+            """GET /api/prefs：返回已保存的预览风格偏好。"""
+            prefs = load_prefs()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "previewStyle": prefs.get("previewStyle"),
+                "codeTheme": prefs.get("codeTheme"),
+            }, ensure_ascii=False).encode("utf-8"))
+
+        def _handle_prefs_save(self):
+            """POST /api/prefs：保存预览风格偏好到本地文件。"""
+            content_length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(content_length)
+            try:
+                data = json.loads(body)
+            except (json.JSONDecodeError, ValueError):
+                self.send_error(400, "Invalid JSON")
+                return
+            prefs = load_prefs()
+            if isinstance(data, dict):
+                if data.get("previewStyle"):
+                    prefs["previewStyle"] = data["previewStyle"]
+                if data.get("codeTheme"):
+                    prefs["codeTheme"] = data["codeTheme"]
+            save_prefs(prefs)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True}).encode("utf-8"))
 
         def _handle_heartbeat(self):
             server_state.heartbeat()
@@ -284,8 +357,8 @@ def main():
     parser.add_argument("--stdin", action="store_true", help="从标准输入读取 markdown")
     parser.add_argument("--no-open", action="store_true", help="不自动打开浏览器")
     parser.add_argument("--verbose", action="store_true", help="输出请求日志")
-    parser.add_argument("--heartbeat-timeout", type=int, default=10,
-                        help="心跳超时秒数，超过此时间无心跳则自动关闭服务（默认 10）")
+    parser.add_argument("--heartbeat-timeout", type=int, default=7200,
+                        help="心跳超时秒数，超过此时间无心跳则自动关闭服务（默认 7200，即 120 分钟，避免后台标签页冻结/睡眠误杀）")
     args = parser.parse_args()
 
     stdin_content = None
@@ -327,7 +400,7 @@ def main():
     if md_content:
         print("已加载 Markdown 内容（%d 字符）" % len(md_content))
     print("== Markdown 预览服务已启动: %s ==" % url)
-    print("心跳超时: %d 秒" % args.heartbeat_timeout)
+    print("心跳超时: %d 秒（%d 分钟）" % (args.heartbeat_timeout, args.heartbeat_timeout // 60))
     print("按 Ctrl+C 停止服务")
 
     try:

@@ -104,6 +104,7 @@
 
   <div id="saveIndicator" class="save-indicator">已保存 ✓</div>
   <script>var MD_CONTENT = null;</script>
+  <script>var SAVED_PREFS = null;</script>
 
   <script src="lib/markdown-it.min.js"></script>
   <script src="lib/markdown-it-span.js"></script>
@@ -194,6 +195,27 @@ function switchCodeTheme() {
   var select = document.getElementById('codeThemeSelect');
   var name = select ? select.value : 'github';
   switchCss('codeThemeStylesheet', 'code-themes/' + name + '.css');
+}
+
+function applySavedPrefs() {
+  if (!window.SAVED_PREFS) return;
+  var ps = document.getElementById('previewStyleSelect');
+  if (ps && SAVED_PREFS.previewStyle) ps.value = SAVED_PREFS.previewStyle;
+  var cs = document.getElementById('codeThemeSelect');
+  if (cs && SAVED_PREFS.codeTheme) cs.value = SAVED_PREFS.codeTheme;
+}
+
+function persistPrefs() {
+  var ps = document.getElementById('previewStyleSelect');
+  var cs = document.getElementById('codeThemeSelect');
+  fetch('/api/prefs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      previewStyle: ps ? ps.value : 'docsify',
+      codeTheme: cs ? cs.value : 'github'
+    })
+  }).catch(function () {});
 }
 
 function updatePreview() {
@@ -367,10 +389,12 @@ function init() {
   document.getElementById('previewStyleSelect').addEventListener('change', function () {
     switchPreviewTheme();
     updatePreview();
+    persistPrefs();
   });
 
   document.getElementById('codeThemeSelect').addEventListener('change', function () {
     switchCodeTheme();
+    persistPrefs();
   });
 
   document.getElementById('copyRichBtn').addEventListener('click', copyRichText);
@@ -388,6 +412,8 @@ function init() {
 
   /* 粘贴图片：监听编辑区 paste 事件 */
   setupPasteHandler();
+
+  applySavedPrefs();
 
   if (md) {
     switchPreviewTheme();
