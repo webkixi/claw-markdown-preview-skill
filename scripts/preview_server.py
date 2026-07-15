@@ -32,6 +32,38 @@ def find_free_port(start_port):
     return start_port
 
 
+def detach_process():
+    """跨平台脱离父进程管理，避免被上层托管系统回收。
+    macOS/Linux: 双 fork + setsid，成为独立 session leader（PPID=1）。
+    Windows: 用 subprocess.Popen + DETACHED_PROCESS 重启动自身（标记环境变量防止递归）。
+    """
+    if os.name == 'posix':
+        try:
+            pid = os.fork()
+            if pid > 0:
+                sys.exit(0)
+            os.setsid()
+            pid = os.fork()
+            if pid > 0:
+                sys.exit(0)
+        except OSError:
+            pass
+    elif os.name == 'nt':
+        import subprocess
+        if os.environ.get('_CMP_DETACHED') == '1':
+            return
+        args = [sys.executable] + sys.argv
+        env = os.environ.copy()
+        env['_CMP_DETACHED'] = '1'
+        try:
+            proc = subprocess.Popen(args, creationflags=0x00000008,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                    stdin=subprocess.DEVNULL)
+        except Exception:
+            return
+        sys.exit(0)
+
+
 def get_prefs_path():
     """返回跨平台的用户偏好存储路径（不放在技能目录内，重装不丢）。"""
     if os.name == 'nt':
@@ -411,4 +443,5 @@ def main():
 
 
 if __name__ == "__main__":
+    detach_process()
     main()
